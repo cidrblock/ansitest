@@ -1,2 +1,5 @@
-tox>4.4.8
+git+https://github.com/ansible-community/pytest-ansible-units.git
+pytest
+pytest-xdist
 pyyaml
+tox>4.4.8

@@ -432,12 +432,6 @@ def conf_commands_pre(
     commands.append(full_cmd)
     commands.append(end_group)
 
-    group = "echo ::group::Remove the toxfile.py"
-    commands.append(group)
-    rm_toxfile = f"rm {galaxy_build_dir}/toxfile.py"
-    commands.append(rm_toxfile)
-    commands.append(end_group)
-
     group = "echo ::group::Build and install the collection"
     commands.append(group)
     cd_build_dir = f"cd {galaxy_build_dir}"

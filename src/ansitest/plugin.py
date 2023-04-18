@@ -445,8 +445,9 @@ def conf_deps(env_conf: EnvConfigSet, test_type: str) -> str:
     :param test_type: The test type.
     :return: The dependencies.
     """
-    deps = OUR_DEPS
+    deps = []
     if test_type in ["integration", "unit"]:
+        deps.extend(OUR_DEPS)
         try:
             with (TOX_WORK_DIR / "test-requirements.txt").open() as fileh:
                 deps.extend(fileh.read().splitlines())

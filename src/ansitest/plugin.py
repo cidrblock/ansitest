@@ -40,9 +40,6 @@ ENV_LIST = """
 {integration, sanity, unit}-py3.10-{2.12, 2.13, 2.14, milestone, devel}
 {integration, sanity, unit}-py3.11-{2.14, milestone, devel}
 """
-UNIT_INT_TST_CMD = "python -m pytest -p no:ansible-units {toxinidir}/tests/{test_type}"
-UNIT_3_8_2_9 = "python -m pytest {toxinidir}/tests/{test_type}"
-SANITY_TST_CMD = "ansible-test sanity --local --requirements --python {py_ver}"
 VALID_SANITY_PY_VERS = ["3.8", "3.9", "3.10", "3.11"]
 TOX_WORK_DIR = Path()
 
@@ -339,28 +336,10 @@ def conf_commands_for_integration_unit(
     """
     commands = []
     envtmpdir = env_conf["envtmpdir"]
-
-    if env_conf.name == "unit-py3.8-2.9":
-        # We rely on pytest-ansible-unit and need the galaxy.yml file to be in the
-        # collections directory. The unit tests will be run from inside the installed collection
-        # directory.
-        coll_dir = f"{envtmpdir}/collections/ansible_collections/{c_namespace}/{c_name}"
-        cp_cmd = f"cp {galaxy_path} {coll_dir}"
-        commands.append(cp_cmd)
-        command = UNIT_3_8_2_9.format(
-            toxinidir=TOX_WORK_DIR,
-            test_type=test_type,
-        )
-        unit_ch_dir = coll_dir
-    else:
-        # pytest-ansible-units is not needed, because if the unit tests are run
-        # from the root of the collections directory, the collection
-        # will be found natively by ansible-core
-        command = UNIT_INT_TST_CMD.format(
-            toxinidir=TOX_WORK_DIR,
-            test_type=test_type,
-        )
-        unit_ch_dir = f"{envtmpdir}/collections/"
+    # Use pytest ansible unit inject only to inject the collection path
+    # into the collection finder
+    command = f"python -m pytest --inject-only {TOX_WORK_DIR}/tests/{test_type}"
+    unit_ch_dir = f"{envtmpdir}/collections/"
     if test_type == "unit":
         commands.append(f"bash -c 'cd {unit_ch_dir} && {command}'")
     else:
@@ -390,7 +369,8 @@ def conf_commands_for_sanity(
     if py_ver not in VALID_SANITY_PY_VERS:
         err = f"Invalid python version for sanity tests: {py_ver}"
         raise RuntimeError(err)
-    command = SANITY_TST_CMD.format(py_ver=py_ver)
+
+    command = f"ansible-test sanity --local --requirements --python {py_ver}"
     ch_dir = f"cd {envtmpdir}/collections/ansible_collections/{c_namespace}/{c_name}"
     full_command = f"bash -c '{ch_dir} && {command}'"
     commands.append(full_command)

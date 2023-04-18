@@ -1,4 +1,4 @@
-name: test
+name: ansitest
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -6,7 +6,11 @@ concurrency:
 
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - "releases/**"
+      - "stable/**"
+  workflow_call:
 
 jobs:
   tox-matrix:

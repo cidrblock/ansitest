@@ -42,7 +42,11 @@ ENV_LIST = """
 """
 VALID_SANITY_PY_VERS = ["3.8", "3.9", "3.10", "3.11"]
 TOX_WORK_DIR = Path()
-
+OUR_DEPS = [
+    "pytest",
+    "pytest-xdist",
+    "git+https://github.com/ansible-community/pytest-ansible-units.git",
+]
 
 T = TypeVar("T", bound=ConfigSet)
 
@@ -167,7 +171,6 @@ def tox_add_env_config(env_conf: EnvConfigSet, state: State) -> None:
             c_name=c_name,
             c_namespace=c_namespace,
             env_conf=env_conf,
-            galaxy_path=galaxy_path,
             test_type=test_type,
         ),
         deps=conf_deps(env_conf=env_conf, test_type=test_type),
@@ -255,8 +258,8 @@ def generate_gh_matrix(env_list: EnvList, state: State) -> None:
     else:
         encoded = f"envlist={value}\n"
 
-    with Path(gh_output).open("a", encoding="utf-8") as f:
-        f.write(encoded)
+    with Path(gh_output).open("a", encoding="utf-8") as fileh:
+        fileh.write(encoded)
     sys.exit(0)
 
 
@@ -287,7 +290,6 @@ def conf_commands(
     c_name: str,
     c_namespace: str,
     env_conf: EnvConfigSet,
-    galaxy_path: Path,
     test_type: str,
 ) -> List[str]:
     """Build the commands for the tox environment.
@@ -302,10 +304,7 @@ def conf_commands(
     """
     if test_type in ["integration", "unit"]:
         return conf_commands_for_integration_unit(
-            c_name=c_name,
-            c_namespace=c_namespace,
             env_conf=env_conf,
-            galaxy_path=galaxy_path,
             test_type=test_type,
         )
     if test_type == "sanity":
@@ -319,10 +318,7 @@ def conf_commands(
 
 
 def conf_commands_for_integration_unit(
-    c_name: str,
-    c_namespace: str,
     env_conf: EnvConfigSet,
-    galaxy_path: Path,
     test_type: str,
 ) -> List[str]:
     """Build the commands for integration and unit tests.
@@ -449,7 +445,7 @@ def conf_deps(env_conf: EnvConfigSet, test_type: str) -> str:
     :param test_type: The test type.
     :return: The dependencies.
     """
-    deps = []
+    deps = OUR_DEPS
     if test_type in ["integration", "unit"]:
         try:
             with (TOX_WORK_DIR / "test-requirements.txt").open() as fileh:

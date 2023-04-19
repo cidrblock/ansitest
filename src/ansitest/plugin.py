@@ -2,6 +2,7 @@
 """tox plugin to emit a github matrix."""
 
 import json
+import logging
 import os
 import re
 import sys
@@ -40,7 +41,6 @@ ENV_LIST = """
 {integration, sanity, unit}-py3.10-{2.12, 2.13, 2.14, milestone, devel}
 {integration, sanity, unit}-py3.11-{2.14, milestone, devel}
 """
-VALID_SANITY_PY_VERS = ["3.8", "3.9", "3.10", "3.11"]
 TOX_WORK_DIR = Path()
 OUR_DEPS = [
     "pytest",
@@ -106,9 +106,8 @@ def tox_add_option(parser: ToxParser) -> None:
     """
     parser.add_argument(
         "--gh-matrix",
-        action="store",
-        default="1234",
-        dest="gh_matrix",
+        action="store_true",
+        default=False,
         help="Emit a github matrix",
     )
 
@@ -130,17 +129,22 @@ def tox_add_core_config(
     :param core_conf: The core configuration object.
     :param state: The state object.
     """
-    global TOX_WORK_DIR  # pylint: disable=global-statement # noqa: PLW0603
-    TOX_WORK_DIR = state.conf.work_dir
+    if state.conf.options.gh_matrix and not state.conf.options.ansible:
+        err = "The --gh-matrix option requires --ansible"
+        logging.critical(err)
+        sys.exit(1)
+
     if not state.conf.options.ansible:
         return
 
+    global TOX_WORK_DIR  # pylint: disable=global-statement # noqa: PLW0603
+    TOX_WORK_DIR = state.conf.work_dir
     env_list = add_ansible_matrix(state)
 
-    if state.conf.options.gh_matrix == "1234":
+    if not state.conf.options.gh_matrix:
         return
 
-    generate_gh_matrix(env_list=env_list, state=state)
+    generate_gh_matrix(env_list=env_list)
     sys.exit(0)
 
 
@@ -183,6 +187,14 @@ def tox_add_env_config(env_conf: EnvConfigSet, state: State) -> None:
     env_conf.loaders.insert(0, loader)
 
 
+def in_action() -> bool:
+    """Check if running on Github Actions platform.
+
+    :return: True if running on Github Actions platform
+    """
+    return os.environ.get("GITHUB_ACTIONS") == "true"
+
+
 def add_ansible_matrix(state: State) -> EnvList:
     """Add the ansible matrix to the state.
 
@@ -207,12 +219,10 @@ def add_ansible_matrix(state: State) -> EnvList:
     return env_list
 
 
-def generate_gh_matrix(env_list: EnvList, state: State) -> None:
+def generate_gh_matrix(env_list: EnvList) -> None:
     """Generate the github matrix.
 
     :param env_list: The environment list.
-    :param state: The state object.
-    :raises RuntimeError: If multiple python versions are found in an environment.
     """
     results = []
 
@@ -225,33 +235,36 @@ def generate_gh_matrix(env_list: EnvList, state: State) -> None:
                 candidates.append(match[2])
         if len(candidates) > 1:
             err = f"Multiple python versions found in {env_name}"
-            raise RuntimeError(err)
+            logging.critical(err)
+            sys.exit(1)
         if len(candidates) == 0:
-            results.append(
-                {
-                    "name": env_name,
-                    "factors": factors,
-                    "python": state.conf.options.gh_matrix,
-                },
-            )
+            err = f"No python versions found in {env_name}"
+            logging.critical(err)
+            sys.exit(1)
+        if "." in candidates[0]:
+            version = candidates[0]
         else:
-            if "." in candidates[0]:
-                version = candidates[0]
-            else:
-                version = f"{candidates[0][0]}.{candidates[0][1:]}"
-            results.append(
-                {
-                    "name": env_name,
-                    "factors": factors,
-                    "python": version,
-                },
-            )
+            version = f"{candidates[0][0]}.{candidates[0][1:]}"
+        results.append(
+            {
+                "name": env_name,
+                "factors": factors,
+                "python": version,
+            },
+        )
 
     gh_output = os.getenv("GITHUB_OUTPUT")
-    value = json.dumps(results)
+    if not gh_output and not in_action():
+        value = json.dumps(results, indent=2, sort_keys=True)
+        print(value)  # noqa: T201
+        return
+
     if not gh_output:
         err = "GITHUB_OUTPUT environment variable not set"
-        raise RuntimeError(err)
+        logging.critical(err)
+        sys.exit(1)
+
+    value = json.dumps(results)
 
     if "\n" in value:
         eof = f"EOF-{uuid.uuid4()}"
@@ -261,7 +274,6 @@ def generate_gh_matrix(env_list: EnvList, state: State) -> None:
 
     with Path(gh_output).open("a", encoding="utf-8") as fileh:
         fileh.write(encoded)
-    sys.exit(0)
 
 
 def get_collection_name(galaxy_path: Path) -> Tuple[str, str]:
@@ -269,21 +281,22 @@ def get_collection_name(galaxy_path: Path) -> Tuple[str, str]:
 
     :param galaxy_path: The path to the galaxy.yml file.
     :return: The collection name.
-    :raises RuntimeError: If the galaxy.yml file is not found.
     """
     try:
         with galaxy_path.open() as galaxy_file:
             galaxy = yaml.safe_load(galaxy_file)
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         err = f"Unable to find galaxy.yml file at {galaxy_path}"
-        raise RuntimeError(err) from exc
+        logging.critical(err)
+        sys.exit(1)
 
     try:
         c_name = galaxy["name"]
         c_namespace = galaxy["namespace"]
     except KeyError as exc:
         err = f"Unable to find {exc} in galaxy.yml"
-        raise RuntimeError(err) from exc
+        logging.critical(err)
+        sys.exit(1)
     return c_name, c_namespace
 
 
@@ -299,7 +312,6 @@ def conf_commands(
     :param c_namespace: The collection namespace.
     :param test_type: The test type, either "integration", "unit", or "sanity".
     :param env_conf: The tox environment configuration object.
-    :raises RuntimeError: If the test type is unknown.
     :return: The commands to run.
     """
     if test_type in ["integration", "unit"]:
@@ -314,7 +326,8 @@ def conf_commands(
             env_conf=env_conf,
         )
     err = f"Unknown test type {test_type}"
-    raise RuntimeError(err)
+    logging.critical(err)
+    sys.exit(1)
 
 
 def conf_commands_for_integration_unit(
@@ -350,7 +363,6 @@ def conf_commands_for_sanity(
     :param c_name: The collection name.
     :param c_namespace: The collection namespace.
     :param env_conf: The tox environment configuration object.
-    :raises RuntimeError: If the python version is not valid.
     :return: The commands to run.
     """
     commands = []
@@ -359,9 +371,6 @@ def conf_commands_for_sanity(
     py_ver = env_conf["basepython"][0].replace("py", "")
     if "." not in py_ver:
         py_ver = f"{py_ver[0]}.{py_ver[1:]}"
-    if py_ver not in VALID_SANITY_PY_VERS:
-        err = f"Invalid python version for sanity tests: {py_ver}"
-        raise RuntimeError(err)
 
     command = f"ansible-test sanity --local --requirements --python {py_ver}"
     ch_dir = f"cd {envtmpdir}/collections/ansible_collections/{c_namespace}/{c_name}"
@@ -383,6 +392,7 @@ def conf_commands_pre(
     :return: The commands to pre run.
     """
     # pylint: disable=too-many-locals
+    # pylint: disable=too-many-statements
     commands = []
 
     # Define some directories"
@@ -392,45 +402,55 @@ def conf_commands_pre(
     galaxy_build_dir = f"{envtmpdir}/collection_build"
     end_group = "echo ::endgroup::"
 
-    group = "echo ::group::Make the galaxy build dir"
-    commands.append(group)
+    if in_action():
+        group = "echo ::group::Make the galaxy build dir"
+        commands.append(group)
     commands.append(f"mkdir {galaxy_build_dir}")
-    commands.append(end_group)
+    if in_action():
+        commands.append(end_group)
 
-    group = "echo ::group::Copy the collection to the galaxy build dir"
-    commands.append(group)
+    if in_action():
+        group = "echo ::group::Copy the collection to the galaxy build dir"
+        commands.append(group)
     cd_tox_dir = f"cd {TOX_WORK_DIR}"
     rsync_cmd = f'rsync -r --cvs-exclude --filter=":- .gitignore" . {galaxy_build_dir}'
     full_cmd = f"bash -c '{cd_tox_dir} && {rsync_cmd}'"
     commands.append(full_cmd)
-    commands.append(end_group)
+    if in_action():
+        commands.append(end_group)
 
-    group = "echo ::group::Build and install the collection"
-    commands.append(group)
+    if in_action():
+        group = "echo ::group::Build and install the collection"
+        commands.append(group)
     cd_build_dir = f"cd {galaxy_build_dir}"
     build_cmd = "ansible-galaxy collection build"
     tar_file = f"{c_namespace}-{c_name}-*.tar.gz"
     install_cmd = f"ansible-galaxy collection install {tar_file} -p {collections_root}"
     full_cmd = f"bash -c '{cd_build_dir} && {build_cmd} && {install_cmd}'"
     commands.append(full_cmd)
-    commands.append(end_group)
+    if in_action():
+        commands.append(end_group)
 
-    group = "echo ::group::Initialize the collection to avoid ansible #68499"
-    commands.append(group)
+    if in_action():
+        group = "echo ::group::Initialize the collection to avoid ansible #68499"
+        commands.append(group)
     cd_install_dir = f"cd {collection_installed_at}"
     git_cfg = "git config --global init.defaultBranch main"
     git_init = "git init ."
     full_cmd = f"bash -c '{cd_install_dir} && {git_cfg} && {git_init}'"
     commands.append(full_cmd)
-    commands.append(end_group)
+    if in_action():
+        commands.append(end_group)
 
     if env_conf.name == "sanity-py3.8-2.9":
         # Avoid "Setuptools is replacing distutils"
-        group = "echo ::group::Use old setuptools for sanity-py3.8-2.9"
-        commands.append(group)
+        if in_action():
+            group = "echo ::group::Use old setuptools for sanity-py3.8-2.9"
+            commands.append(group)
         pip_install = "pip install setuptools==57.5.0"
         commands.append(pip_install)
-        commands.append(end_group)
+        if in_action():
+            commands.append(end_group)
 
     return commands
 

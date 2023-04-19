@@ -89,7 +89,9 @@ select = ["ALL"]
 # ARG = flake8 argument, overlap with pylint
 # FBT = flake8 boolean, silly
 # TID = flake8 tidy imports, need relative for pylint
-ignore = ["ARG", "FBT", "TID"]
+# C901 = flake8 complexity, fixme
+# PLR0915 = too many statments, fixme
+ignore = ["ARG", "FBT", "TID", "C901", "PLR0915"]
 target-version = "py38"
 
 [tool.ruff.isort]

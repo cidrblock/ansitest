@@ -151,7 +151,8 @@ def tox_add_env_config(env_conf: EnvConfigSet, state: State) -> None:
     :param env_conf: The environment configuration object.
     :param state: The state object.
     """
-    # pylint: disable=unused-argument
+    if not state.args.ansible:
+        return
 
     test_type = env_conf.name.split("-")[0]
     if test_type not in ["integration", "sanity", "unit"]:

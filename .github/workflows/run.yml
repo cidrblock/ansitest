@@ -32,7 +32,7 @@ jobs:
       - name: Generate matrix
         id: generate-matrix
         run: |
-          python -m tox --ansible --gh-matrix 3.11
+          python -m tox --ansible --gh-matrix
 
     outputs:
       envlist: ${{ steps.generate-matrix.outputs.envlist }}

@@ -9,3 +9,4 @@ passenv
 setenv
 toxfile
 toxinidir
+xdist

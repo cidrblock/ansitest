@@ -151,7 +151,8 @@ def tox_add_env_config(env_conf: EnvConfigSet, state: State) -> None:
     :param env_conf: The environment configuration object.
     :param state: The state object.
     """
-    # pylint: disable=unused-argument
+    if not state.conf.options.ansible:
+        return
 
     test_type = env_conf.name.split("-")[0]
     if test_type not in ["integration", "sanity", "unit"]:
@@ -296,7 +297,6 @@ def conf_commands(
 
     :param c_name: The collection name.
     :param c_namespace: The collection namespace.
-    :param galaxy_path: The path to the galaxy.yml file.
     :param test_type: The test type, either "integration", "unit", or "sanity".
     :param env_conf: The tox environment configuration object.
     :raises RuntimeError: If the test type is unknown.
@@ -323,11 +323,8 @@ def conf_commands_for_integration_unit(
 ) -> List[str]:
     """Build the commands for integration and unit tests.
 
-    :param c_name: The collection name.
-    :param c_namespace: The collection namespace.
-    :param galaxy_path: The path to the galaxy.yml file.
-    :param test_type: The test type, either "integration" or "unit".
     :param env_conf: The tox environment configuration object.
+    :param test_type: The test type, either "integration" or "unit".
     :return: The command to run.
     """
     commands = []

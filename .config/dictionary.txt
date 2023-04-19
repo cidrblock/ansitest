@@ -1,5 +1,6 @@
 ansitest
 basepython
+cidrblock
 devel
 endgroup
 envtmpdir

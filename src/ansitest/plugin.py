@@ -36,8 +36,8 @@ ALLOWED_EXTERNALS = [
     "echo",
 ]
 ENV_LIST = """
-{integration, sanity, unit}-py3.8-{2.9, 2.10, 2.11, 2.12, 2.13}
-{integration, sanity, unit}-py3.9-{2.10, 2.11, 2.12, 2.13, 2.14, milestone, devel}
+{integration, sanity, unit}-py3.8-{2.9, 2.12, 2.13}
+{integration, sanity, unit}-py3.9-{2.12, 2.13, 2.14, milestone, devel}
 {integration, sanity, unit}-py3.10-{2.12, 2.13, 2.14, milestone, devel}
 {integration, sanity, unit}-py3.11-{2.14, milestone, devel}
 """
